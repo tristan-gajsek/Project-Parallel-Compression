@@ -9,7 +9,7 @@ pub struct Cli {
     #[arg(
         long,
         short,
-        help = "The amount of bytes each thread will process. If not specified, the program separates input on newlines"
+        help = "The amount of bytes each process will compress. If not specified, input is separated on newlines"
     )]
     pub size: Option<usize>,
 }
