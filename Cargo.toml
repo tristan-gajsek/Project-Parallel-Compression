@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.95"
+clap = { version = "4.5.23", features = ["derive"] }
+colored = "2.2.0"
+derive_more = { version = "1.0.0", features = ["display"] }
 mpi = "0.8.0"
