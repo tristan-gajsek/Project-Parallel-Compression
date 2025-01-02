@@ -106,3 +106,14 @@ pub fn decompress(slice: &[u8]) -> Box<[u8]> {
 
     bytes.into_boxed_slice()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compression() {
+        let text = b"as;djfwsdFJKasDOLJgfwei:ORjtgiwerht395y4978yt9p3w4urhof;vl./asrg#45";
+        assert_eq!(text, decompress(&compress(text)).as_ref());
+    }
+}
