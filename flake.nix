@@ -11,6 +11,8 @@
         mkShell rec {
           shellHook = "exec zsh";
           buildInputs = [
+            llvmPackages.clang
+            llvmPackages.libclang
             mpi
             mpi.dev
             pkg-config
