@@ -1,2 +1,2 @@
-run WORLD-SIZE *ARGS:
-    @mpirun -np {{WORLD-SIZE}} cargo r -q -- {{ARGS}}
+run WORLD_SIZE *ARGS:
+    @mpirun -np {{WORLD_SIZE}} cargo r -q -- {{ARGS}}
