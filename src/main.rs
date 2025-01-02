@@ -13,8 +13,9 @@ use mpi::{
     Rank,
 };
 
-mod algorithms;
+mod bit_vec;
 mod cli;
+mod delta;
 
 fn main() {
     let args = Cli::parse();
