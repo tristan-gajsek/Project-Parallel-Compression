@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use crate::bit_vec::{BitReader, BitWriter};
+use crate::bits::{BitReader, BitWriter};
 
 static DIFFS: LazyLock<[Vec<i16>; 4]> = LazyLock::new(|| {
     [

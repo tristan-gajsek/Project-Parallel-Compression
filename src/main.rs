@@ -13,7 +13,7 @@ use mpi::{
     Rank,
 };
 
-mod bit_vec;
+mod bits;
 mod cli;
 mod delta;
 
