@@ -16,8 +16,14 @@ use mpi::{
 mod bits;
 mod cli;
 mod delta;
+mod huffman;
 
 fn main() {
+    let mut input = vec![];
+    io::stdin().read_to_end(&mut input).unwrap();
+    huffman::compress(&input);
+    return;
+
     let args = Cli::parse();
 
     if let Err(e) = run(&args) {
