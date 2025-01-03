@@ -1,10 +1,10 @@
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashMap},
-    io::{BufReader, Cursor},
+    io::Cursor,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use bit_vec::BitVec;
 use byteorder::{BigEndian, ReadBytesExt};
 
@@ -93,7 +93,7 @@ impl Ord for Node {
     }
 }
 
-fn counts_to_header(counts: &HashMap<u8, u32>) -> Box<[u8]> {
+fn counts_to_header(counts: &HashMap<u8, u32>) -> Vec<u8> {
     let mut header = Vec::with_capacity(2 + 5 * counts.len());
 
     header.extend_from_slice(&(counts.len() as u16).to_be_bytes());
@@ -101,7 +101,7 @@ fn counts_to_header(counts: &HashMap<u8, u32>) -> Box<[u8]> {
         header.extend_from_slice(&[*byte]);
         header.extend_from_slice(&count.to_be_bytes());
     }
-    header.into_boxed_slice()
+    header
 }
 
 fn header_to_counts(header: &[u8]) -> Result<HashMap<u8, u32>> {
@@ -118,27 +118,30 @@ pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
     let mut counts = HashMap::new();
     input
         .iter()
-        .for_each(|byte| *counts.entry(byte).or_insert(0u32) += 1);
+        .for_each(|byte| *counts.entry(*byte).or_insert(0u32) += 1);
     let codes = Node::new_tree(
         counts
             .iter()
-            .map(|(byte, count)| Node::new(*count, **byte))
+            .map(|(byte, count)| Node::new(*count, *byte))
             .collect(),
     )
     .get_codes();
 
-    Ok(input
-        .iter()
-        .flat_map(|byte| {
-            codes
-                .get(byte)
-                .cloned()
-                .ok_or(anyhow!("Couldn't find byte {byte} in Huffman table"))
-        })
-        .flatten()
-        .collect::<BitVec>()
-        .to_bytes()
-        .into_boxed_slice())
+    let mut header = counts_to_header(&counts);
+    header.append(
+        &mut input
+            .iter()
+            .flat_map(|byte| {
+                codes
+                    .get(byte)
+                    .cloned()
+                    .ok_or(anyhow!("Couldn't find byte {byte} in Huffman table"))
+            })
+            .flatten()
+            .collect::<BitVec>()
+            .to_bytes(),
+    );
+    Ok(header.into_boxed_slice())
 }
 
 pub fn decompress(input: &[u8]) -> Box<[u8]> {
