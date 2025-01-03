@@ -19,11 +19,6 @@ mod delta;
 mod huffman;
 
 fn main() {
-    //let mut input = vec![];
-    //io::stdin().read_to_end(&mut input).unwrap();
-    //dbg!(huffman::compress(&input));
-    //return;
-
     let args = Cli::parse();
 
     if let Err(e) = run(&args) {

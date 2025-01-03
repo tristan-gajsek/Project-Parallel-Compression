@@ -4,9 +4,11 @@ use std::{
     io::Cursor,
 };
 
-use anyhow::{anyhow, Ok, Result};
-use bit_vec::BitVec;
+use anyhow::{Ok, Result};
+use bitvec::order::Msb0;
 use byteorder::{BigEndian, ReadBytesExt};
+
+type BitVec = bitvec::vec::BitVec<u8, Msb0>;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Node {
@@ -18,6 +20,15 @@ struct Node {
 enum NodeContent {
     Byte(u8),
     Leaves(Option<Box<Node>>, Option<Box<Node>>),
+}
+
+impl NodeContent {
+    pub fn byte(&self) -> Option<u8> {
+        match self {
+            NodeContent::Byte(byte) => Some(*byte),
+            NodeContent::Leaves(..) => None,
+        }
+    }
 }
 
 impl Node {
@@ -67,22 +78,17 @@ impl Node {
         }
     }
 
-    pub fn get_byte(&self, bits: &BitVec) -> Result<Option<u8>> {
+    pub fn get_byte(&self, bits: &BitVec) -> Option<u8> {
         let mut node = self;
         for bit in bits {
             match &node.content {
-                NodeContent::Byte(byte) => return Ok(Some(*byte)),
+                NodeContent::Byte(byte) => return Some(*byte),
                 NodeContent::Leaves(left, right) => {
-                    node = match bit {
-                        false => left,
-                        true => right,
-                    }
-                    .as_ref()
-                    .ok_or(anyhow!("Invalid bit pattern for Huffman tree: {bits}"))?;
+                    node = if !bit { left } else { right }.as_ref()?;
                 }
             }
         }
-        Ok(None)
+        node.content.byte()
     }
 }
 
@@ -94,7 +100,28 @@ impl PartialOrd for Node {
 
 impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.value.cmp(&self.value)
+        other
+            .value
+            .cmp(&self.value)
+            .then(other.content.cmp(&self.content))
+    }
+}
+
+impl PartialOrd for NodeContent {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for NodeContent {
+    fn cmp(&self, other: &Self) -> Ordering {
+        use NodeContent as N;
+        match (self, other) {
+            (N::Leaves(..), N::Leaves(..)) => Ordering::Equal,
+            (N::Byte(b1), N::Byte(b2)) => b1.cmp(b2),
+            (N::Byte(_), N::Leaves(..)) => Ordering::Less,
+            (N::Leaves(..), N::Byte(_)) => Ordering::Greater,
+        }
     }
 }
 
@@ -109,17 +136,20 @@ fn counts_to_header(counts: &HashMap<u8, u32>) -> Vec<u8> {
     header
 }
 
-fn header_to_counts(header: &[u8]) -> Result<(HashMap<u8, u32>, &[u8])> {
+fn header_to_counts(header: &[u8]) -> Result<(HashMap<u8, u32>, BitVec)> {
     let mut counts = HashMap::new();
 
     let mut cursor = Cursor::new(header);
     for _ in 0..cursor.read_u16::<BigEndian>()? {
         counts.insert(cursor.read_u8()?, cursor.read_u32::<BigEndian>()?);
     }
-    Ok((counts, &header[cursor.position() as usize..]))
+    let bit_count = cursor.read_u64::<BigEndian>()?;
+    let mut bits = BitVec::from_slice(&header[cursor.position() as usize..]);
+    bits.truncate(bit_count as usize);
+    Ok((counts, bits))
 }
 
-pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
+pub fn compress(input: &[u8]) -> Vec<u8> {
     let mut counts = HashMap::new();
     input
         .iter()
@@ -127,36 +157,64 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
     let codes = Node::new_tree(&counts).get_codes();
 
     let mut compressed = counts_to_header(&counts);
-    compressed.append(
-        &mut input
-            .iter()
-            .flat_map(|byte| {
-                codes
-                    .get(byte)
-                    .cloned()
-                    .ok_or(anyhow!("Couldn't find byte {byte} in Huffman table"))
-            })
-            .flatten()
-            .collect::<BitVec>()
-            .to_bytes(),
-    );
-    Ok(compressed)
+    let mut bits = BitVec::new();
+    for byte in input {
+        bits.append(&mut codes.get(byte).cloned().unwrap());
+    }
+    println!("{bits:?}");
+    compressed.extend_from_slice(&(bits.len() as u64).to_be_bytes());
+    compressed.append(&mut bits.into_vec());
+    compressed
 }
 
 pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
-    let (counts, data) = header_to_counts(input)?;
+    let (counts, bits) = header_to_counts(input)?;
     let tree = Node::new_tree(&counts);
-    let bits = BitVec::from_bytes(data);
+    println!("{bits:?}");
     let mut decompressed = vec![];
 
     let mut pattern = BitVec::new();
     for bit in bits {
         pattern.push(bit);
-        if let Some(byte) = tree.get_byte(&pattern)? {
+        if let Some(byte) = tree.get_byte(&pattern) {
             decompressed.push(byte);
             pattern.clear();
         }
     }
-
     Ok(decompressed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_creation_and_parsing() {
+        let counts = HashMap::from([(1, 1), (2, 2), (3, 3)]);
+        let mut header = counts_to_header(&counts);
+        header.extend_from_slice(&[24, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
+        let (new_counts, bits) = header_to_counts(&header).expect("Header parsing failed");
+        assert_eq!(counts, new_counts);
+        assert_eq!(bits, BitVec::from_slice(&[1, 2, 3]))
+    }
+
+    #[test]
+    fn get_bytes_from_tree() {
+        let tree = Node::new_tree(&HashMap::from([(1, 1), (2, 2), (3, 3)]));
+        let mut bits1 = BitVec::repeat(true, 1);
+        bits1.push(false);
+        let bits2 = BitVec::repeat(true, 2);
+        let bits3 = BitVec::repeat(false, 1);
+        assert_eq!(tree.get_byte(&bits1), Some(1));
+        assert_eq!(tree.get_byte(&bits2), Some(2));
+        assert_eq!(tree.get_byte(&bits3), Some(3));
+    }
+
+    #[test]
+    fn compression_and_decompression() {
+        let text = b"aaabbc";
+        let compressed = compress(text);
+        let decompressed = decompress(&compressed).expect("Decompression failed");
+        assert_eq!(text, decompressed.as_slice());
+    }
 }

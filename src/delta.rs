@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compression() {
+    fn compression_and_decompression() {
         let text = b"as;djfwsdFJKasDOLJgfwei:ORjtgiwerht395y4978yt9p3w4urhof;vl./asrg#45";
         assert_eq!(text.as_ref(), decompress(&compress(text)));
     }
