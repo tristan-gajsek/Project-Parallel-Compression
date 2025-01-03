@@ -9,7 +9,7 @@ use cli::Cli;
 use colored::Colorize;
 use itertools::Itertools;
 use mpi::{
-    traits::{Communicator, Destination, Source},
+    traits::{Communicator, CommunicatorCollectives, Destination, Source},
     Rank,
 };
 
@@ -19,10 +19,10 @@ mod delta;
 mod huffman;
 
 fn main() {
-    let mut input = vec![];
-    io::stdin().read_to_end(&mut input).unwrap();
-    dbg!(huffman::compress(&input));
-    return;
+    //let mut input = vec![];
+    //io::stdin().read_to_end(&mut input).unwrap();
+    //dbg!(huffman::compress(&input));
+    //return;
 
     let args = Cli::parse();
 
@@ -103,17 +103,20 @@ fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
     }
 
     eprintln!("Done on {}", world.rank());
+    world.barrier();
     if world.rank() != 0 {
         return Ok(None);
     }
 
     // Make sure output data is in the correct order
     let mut ordered_output = Vec::with_capacity(input.len());
-    for rank in 0..output.len() {
-        if let Some(chunk) = output[rank].pop_front() {
-            ordered_output.push(chunk.into_boxed_slice());
-        } else {
-            break;
+    'outer: loop {
+        for rank in 0..output.len() {
+            if let Some(chunk) = output[rank].pop_front() {
+                ordered_output.push(chunk.into_boxed_slice());
+            } else {
+                break 'outer;
+            }
         }
     }
 
