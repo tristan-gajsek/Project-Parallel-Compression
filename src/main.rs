@@ -9,7 +9,7 @@ use cli::Cli;
 use colored::Colorize;
 use itertools::Itertools;
 use mpi::{
-    traits::{Communicator, CommunicatorCollectives, Destination, Source},
+    traits::{Communicator, Destination, Source},
     Rank,
 };
 
@@ -103,7 +103,6 @@ fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
     }
 
     eprintln!("Done on {}", world.rank());
-    world.barrier();
     if world.rank() != 0 {
         return Ok(None);
     }
