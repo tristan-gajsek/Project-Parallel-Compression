@@ -21,7 +21,7 @@ mod huffman;
 fn main() {
     let mut input = vec![];
     io::stdin().read_to_end(&mut input).unwrap();
-    huffman::compress(&input);
+    dbg!(huffman::compress(&input));
     return;
 
     let args = Cli::parse();

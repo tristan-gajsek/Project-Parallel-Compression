@@ -3,6 +3,7 @@ use std::{
     collections::{BinaryHeap, HashMap},
 };
 
+use anyhow::{anyhow, Result};
 use bit_vec::BitVec;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -76,18 +77,31 @@ impl Ord for Node {
     }
 }
 
-pub fn compress(input: &[u8]) -> Box<[u8]> {
+pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
     let mut counts = HashMap::new();
     input
         .iter()
         .for_each(|byte| *counts.entry(byte).or_insert(0u32) += 1);
-    let tree = Node::new_tree(
+    let codes = Node::new_tree(
         counts
             .iter()
             .map(|(byte, count)| Node::new(*count, **byte))
             .collect(),
-    );
-    unimplemented!()
+    )
+    .get_codes();
+
+    Ok(input
+        .iter()
+        .flat_map(|byte| {
+            codes
+                .get(byte)
+                .cloned()
+                .ok_or(anyhow!("Couldn't find {byte} in Huffman table"))
+        })
+        .flatten()
+        .collect::<BitVec>()
+        .to_bytes()
+        .into_boxed_slice())
 }
 
 pub fn decompress(input: &[u8]) -> Box<[u8]> {
