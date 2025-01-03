@@ -1,10 +1,12 @@
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashMap},
+    io::{BufReader, Cursor},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use bit_vec::BitVec;
+use byteorder::{BigEndian, ReadBytesExt};
 
 #[derive(Debug, PartialEq, Eq)]
 struct Node {
@@ -60,8 +62,22 @@ impl Node {
         }
     }
 
-    pub fn get_byte(&self, bits: &BitVec) -> u8 {
-        unimplemented!()
+    pub fn get_byte(&self, bits: &BitVec) -> Result<u8> {
+        let mut node = self;
+        for bit in bits {
+            match &node.content {
+                NodeContent::Byte(byte) => return Ok(*byte),
+                NodeContent::Leaves(left, right) => {
+                    node = match bit {
+                        false => left,
+                        true => right,
+                    }
+                    .as_ref()
+                    .ok_or(anyhow!("Invalid bit pattern for Huffman tree: {bits}"))?;
+                }
+            }
+        }
+        bail!("Couldn't find byte for {bits} in Huffman tree");
     }
 }
 
@@ -75,6 +91,27 @@ impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
         other.value.cmp(&self.value)
     }
+}
+
+fn counts_to_header(counts: &HashMap<u8, u32>) -> Box<[u8]> {
+    let mut header = Vec::with_capacity(2 + 5 * counts.len());
+
+    header.extend_from_slice(&(counts.len() as u16).to_be_bytes());
+    for (byte, count) in counts.iter() {
+        header.extend_from_slice(&[*byte]);
+        header.extend_from_slice(&count.to_be_bytes());
+    }
+    header.into_boxed_slice()
+}
+
+fn header_to_counts(header: &[u8]) -> Result<HashMap<u8, u32>> {
+    let mut counts = HashMap::new();
+
+    let mut cursor = Cursor::new(header);
+    for _ in 0..cursor.read_u16::<BigEndian>()? {
+        counts.insert(cursor.read_u8()?, cursor.read_u32::<BigEndian>()?);
+    }
+    Ok(counts)
 }
 
 pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
@@ -96,7 +133,7 @@ pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
             codes
                 .get(byte)
                 .cloned()
-                .ok_or(anyhow!("Couldn't find {byte} in Huffman table"))
+                .ok_or(anyhow!("Couldn't find byte {byte} in Huffman table"))
         })
         .flatten()
         .collect::<BitVec>()

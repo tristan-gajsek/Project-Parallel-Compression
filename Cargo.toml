@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 bit-vec = "0.8.0"
+byteorder = "1.5.0"
 clap = { version = "4.5.23", features = ["derive"] }
 colored = "2.2.0"
 derive_more = { version = "1.0.0", features = ["display"] }
