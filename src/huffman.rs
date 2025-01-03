@@ -4,7 +4,7 @@ use std::{
     io::Cursor,
 };
 
-use anyhow::{anyhow, bail, Ok, Result};
+use anyhow::{anyhow, Ok, Result};
 use bit_vec::BitVec;
 use byteorder::{BigEndian, ReadBytesExt};
 
@@ -28,7 +28,12 @@ impl Node {
         }
     }
 
-    pub fn new_tree(mut counts: BinaryHeap<Node>) -> Self {
+    pub fn new_tree(counts: &HashMap<u8, u32>) -> Self {
+        let mut counts: BinaryHeap<_> = counts
+            .iter()
+            .map(|(byte, count)| Node::new(*count, *byte))
+            .collect();
+
         while counts.len() > 1 {
             let left = counts.pop().unwrap();
             let right = counts.pop().unwrap();
@@ -62,11 +67,11 @@ impl Node {
         }
     }
 
-    pub fn get_byte(&self, bits: &BitVec) -> Result<u8> {
+    pub fn get_byte(&self, bits: &BitVec) -> Result<Option<u8>> {
         let mut node = self;
         for bit in bits {
             match &node.content {
-                NodeContent::Byte(byte) => return Ok(*byte),
+                NodeContent::Byte(byte) => return Ok(Some(*byte)),
                 NodeContent::Leaves(left, right) => {
                     node = match bit {
                         false => left,
@@ -77,7 +82,7 @@ impl Node {
                 }
             }
         }
-        bail!("Couldn't find byte for {bits} in Huffman tree");
+        Ok(None)
     }
 }
 
@@ -104,14 +109,14 @@ fn counts_to_header(counts: &HashMap<u8, u32>) -> Vec<u8> {
     header
 }
 
-fn header_to_counts(header: &[u8]) -> Result<HashMap<u8, u32>> {
+fn header_to_counts(header: &[u8]) -> Result<(HashMap<u8, u32>, &[u8])> {
     let mut counts = HashMap::new();
 
     let mut cursor = Cursor::new(header);
     for _ in 0..cursor.read_u16::<BigEndian>()? {
         counts.insert(cursor.read_u8()?, cursor.read_u32::<BigEndian>()?);
     }
-    Ok(counts)
+    Ok((counts, &header[cursor.position() as usize..]))
 }
 
 pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
@@ -119,16 +124,10 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
     input
         .iter()
         .for_each(|byte| *counts.entry(*byte).or_insert(0u32) += 1);
-    let codes = Node::new_tree(
-        counts
-            .iter()
-            .map(|(byte, count)| Node::new(*count, *byte))
-            .collect(),
-    )
-    .get_codes();
+    let codes = Node::new_tree(&counts).get_codes();
 
-    let mut header = counts_to_header(&counts);
-    header.append(
+    let mut compressed = counts_to_header(&counts);
+    compressed.append(
         &mut input
             .iter()
             .flat_map(|byte| {
@@ -141,9 +140,23 @@ pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
             .collect::<BitVec>()
             .to_bytes(),
     );
-    Ok(header)
+    Ok(compressed)
 }
 
-pub fn decompress(input: &[u8]) -> Vec<u8> {
-    unimplemented!()
+pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
+    let (counts, data) = header_to_counts(input)?;
+    let tree = Node::new_tree(&counts);
+    let bits = BitVec::from_bytes(data);
+    let mut decompressed = vec![];
+
+    let mut pattern = BitVec::new();
+    for bit in bits {
+        pattern.push(bit);
+        if let Some(byte) = tree.get_byte(&pattern)? {
+            decompressed.push(byte);
+            pattern.clear();
+        }
+    }
+
+    Ok(decompressed)
 }
