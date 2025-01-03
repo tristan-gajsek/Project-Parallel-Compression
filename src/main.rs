@@ -37,7 +37,7 @@ fn run(args: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn read_input(size: Option<usize>) -> Result<Box<[Box<[u8]>]>> {
+fn read_input(size: Option<usize>) -> Result<Vec<Vec<u8>>> {
     let mut stdin = io::stdin().lock();
 
     let chunks = if let Some(size) = size {
@@ -62,7 +62,7 @@ fn read_input(size: Option<usize>) -> Result<Box<[Box<[u8]>]>> {
     Ok(chunks)
 }
 
-fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
+fn process_input(input: &[Vec<u8>]) -> Result<Option<Vec<Vec<u8>>>> {
     let universe = mpi::initialize().ok_or(anyhow!("MPI initialization failed"))?;
     let world = universe.world();
     if world.size() < 2 {
@@ -96,9 +96,7 @@ fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
             }
             eprintln!("Received {chunk:?} on {}", world.rank());
             // Process data and send it back to process 0
-            world
-                .process_at_rank(0)
-                .send(process_chunk(&chunk).as_ref());
+            world.process_at_rank(0).send(&process_chunk(&chunk));
         }
     }
 
@@ -112,7 +110,7 @@ fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
     'outer: loop {
         for rank in 0..output.len() {
             if let Some(chunk) = output[rank].pop_front() {
-                ordered_output.push(chunk.into_boxed_slice());
+                ordered_output.push(chunk);
             } else {
                 break 'outer;
             }
@@ -120,9 +118,9 @@ fn process_input(input: &[Box<[u8]>]) -> Result<Option<Box<[Box<[u8]>]>>> {
     }
 
     eprintln!("{ordered_output:#?}");
-    Ok(Some(ordered_output.into_boxed_slice()))
+    Ok(Some(ordered_output))
 }
 
-fn process_chunk(input: &[u8]) -> Box<[u8]> {
+fn process_chunk(input: &[u8]) -> Vec<u8> {
     input.iter().map(|data| data + 1).collect()
 }

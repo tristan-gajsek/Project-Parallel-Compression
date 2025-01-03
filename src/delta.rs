@@ -33,7 +33,7 @@ fn bits_to_diff(bits: u8, count: u8) -> i16 {
     }
 }
 
-pub fn compress(slice: &[u8]) -> Box<[u8]> {
+pub fn compress(slice: &[u8]) -> Vec<u8> {
     let mut bits = BitWriter::new();
     let mut repetition = 0;
     bits.byte(slice[0]);
@@ -72,10 +72,10 @@ pub fn compress(slice: &[u8]) -> Box<[u8]> {
     }
     bits.bits(0b11, 2);
     bits.flush();
-    bits.into_boxed_slice()
+    bits.into()
 }
 
-pub fn decompress(slice: &[u8]) -> Box<[u8]> {
+pub fn decompress(slice: &[u8]) -> Vec<u8> {
     let mut bits = BitReader::new(slice);
     let mut bytes = Vec::from([bits.byte()]);
     let mut last_byte = bytes[0];
@@ -103,8 +103,7 @@ pub fn decompress(slice: &[u8]) -> Box<[u8]> {
             _ => unreachable!(),
         }
     }
-
-    bytes.into_boxed_slice()
+    bytes
 }
 
 #[cfg(test)]
@@ -114,6 +113,6 @@ mod tests {
     #[test]
     fn compression() {
         let text = b"as;djfwsdFJKasDOLJgfwei:ORjtgiwerht395y4978yt9p3w4urhof;vl./asrg#45";
-        assert_eq!(text, decompress(&compress(text)).as_ref());
+        assert_eq!(text.as_ref(), decompress(&compress(text)));
     }
 }

@@ -114,7 +114,7 @@ fn header_to_counts(header: &[u8]) -> Result<HashMap<u8, u32>> {
     Ok(counts)
 }
 
-pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
+pub fn compress(input: &[u8]) -> Result<Vec<u8>> {
     let mut counts = HashMap::new();
     input
         .iter()
@@ -141,9 +141,9 @@ pub fn compress(input: &[u8]) -> Result<Box<[u8]>> {
             .collect::<BitVec>()
             .to_bytes(),
     );
-    Ok(header.into_boxed_slice())
+    Ok(header)
 }
 
-pub fn decompress(input: &[u8]) -> Box<[u8]> {
+pub fn decompress(input: &[u8]) -> Vec<u8> {
     unimplemented!()
 }

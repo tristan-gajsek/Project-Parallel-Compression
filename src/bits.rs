@@ -13,10 +13,6 @@ impl BitWriter {
         }
     }
 
-    pub fn into_boxed_slice(self) -> Box<[u8]> {
-        self.bytes.into_boxed_slice()
-    }
-
     pub fn byte(&mut self, byte: u8) {
         self.bits(byte, 8);
     }
@@ -45,6 +41,12 @@ impl BitWriter {
             self.bits = 0;
             self.current_bit = 7;
         }
+    }
+}
+
+impl From<BitWriter> for Vec<u8> {
+    fn from(value: BitWriter) -> Self {
+        value.bytes
     }
 }
 
