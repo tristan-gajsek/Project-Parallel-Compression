@@ -1,12 +1,9 @@
-use std::{
-    cmp::Ordering,
-    collections::{BinaryHeap, HashMap},
-    io::Cursor,
-};
+use std::{cmp::Ordering, collections::HashMap, io::Cursor};
 
 use anyhow::{Ok, Result};
 use bitvec::order::Msb0;
 use byteorder::{BigEndian, ReadBytesExt};
+use itertools::Itertools;
 
 type BitVec = bitvec::vec::BitVec<u8, Msb0>;
 
@@ -40,9 +37,10 @@ impl Node {
     }
 
     pub fn new_tree(counts: &HashMap<u8, u32>) -> Self {
-        let mut counts: BinaryHeap<_> = counts
+        let mut counts: Vec<_> = counts
             .iter()
             .map(|(byte, count)| Node::new(*count, *byte))
+            .sorted()
             .collect();
 
         while counts.len() > 1 {
@@ -103,7 +101,7 @@ impl Ord for Node {
         other
             .value
             .cmp(&self.value)
-            .then(other.content.cmp(&self.content))
+            .then_with(|| other.content.cmp(&self.content))
     }
 }
 
@@ -156,12 +154,13 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
         .for_each(|byte| *counts.entry(*byte).or_insert(0u32) += 1);
     let codes = Node::new_tree(&counts).get_codes();
 
+    dbg!(&codes);
+
     let mut compressed = counts_to_header(&counts);
     let mut bits = BitVec::new();
     for byte in input {
         bits.append(&mut codes.get(byte).cloned().unwrap());
     }
-    println!("{bits:?}");
     compressed.extend_from_slice(&(bits.len() as u64).to_be_bytes());
     compressed.append(&mut bits.into_vec());
     compressed
@@ -170,7 +169,6 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
 pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     let (counts, bits) = header_to_counts(input)?;
     let tree = Node::new_tree(&counts);
-    println!("{bits:?}");
     let mut decompressed = vec![];
 
     let mut pattern = BitVec::new();
@@ -201,10 +199,11 @@ mod tests {
     #[test]
     fn get_bytes_from_tree() {
         let tree = Node::new_tree(&HashMap::from([(1, 1), (2, 2), (3, 3)]));
-        let mut bits1 = BitVec::repeat(true, 1);
-        bits1.push(false);
-        let bits2 = BitVec::repeat(true, 2);
-        let bits3 = BitVec::repeat(false, 1);
+        dbg!(&tree);
+        let bits1 = BitVec::repeat(false, 2);
+        let mut bits2 = BitVec::repeat(false, 1);
+        bits2.push(true);
+        let bits3 = BitVec::repeat(true, 1);
         assert_eq!(tree.get_byte(&bits1), Some(1));
         assert_eq!(tree.get_byte(&bits2), Some(2));
         assert_eq!(tree.get_byte(&bits3), Some(3));
@@ -212,7 +211,7 @@ mod tests {
 
     #[test]
     fn compression_and_decompression() {
-        let text = b"aaabbc";
+        let text = b"[ashd[0fvwhre[08fvh[e08w54htg[03pei5rhg['apiwk4rhtg]]]]]]";
         let compressed = compress(text);
         let decompressed = decompress(&compressed).expect("Decompression failed");
         assert_eq!(text, decompressed.as_slice());
