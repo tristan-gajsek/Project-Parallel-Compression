@@ -1,5 +1,3 @@
-set export
-
 list:
     @just -l
 
