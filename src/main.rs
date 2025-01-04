@@ -28,10 +28,12 @@ fn main() {
 fn run(args: &Cli) -> Result<()> {
     let universe = mpi::initialize().ok_or(anyhow!("MPI initialization failed"))?;
     let world = universe.world();
+    if world.size() < 2 {
+        bail!("Number of processes must be at least 2");
+    }
 
-    let input = match (world.size(), world.rank()) {
-        (size, 0) if size < 2 => bail!("Number of processes must be at least 2"),
-        (_, 0) => Some(read_input(args)?),
+    let input = match world.rank() {
+        0 => Some(read_input(args)?),
         _ => None,
     };
     let mut output = vec![VecDeque::new(); (world.size() - 1) as usize];

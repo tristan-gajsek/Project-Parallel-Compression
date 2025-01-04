@@ -201,14 +201,15 @@ mod tests {
     #[test]
     fn get_bytes_from_tree() {
         let tree = Node::new_tree(&HashMap::from([(1, 1), (2, 2), (3, 3)]));
-        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 0, 0)), Some(1));
-        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 0, 1)), Some(2));
-        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1)), Some(3));
+        dbg!(&tree);
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1, 0)), Some(1));
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1, 1)), Some(2));
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 0)), Some(3));
     }
 
     #[test]
     fn compression_and_decompression() {
-        let text = b"[ashd[0fvwhre[08fvh[e08w54htg[03pei5rhg['apiwk4rhtg]]]]]]";
+        let text = include_bytes!("main.rs");
         let compressed = compress(text);
         let decompressed = decompress(&compressed).expect("Decompression failed");
         assert_eq!(text, decompressed.as_slice());

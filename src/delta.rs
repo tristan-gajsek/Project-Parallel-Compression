@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn compression_and_decompression() {
-        let text = b"as;djfwsdFJKasDOLJgfwei:ORjtgiwerht395y4978yt9p3w4urhof;vl./asrg#45";
+        let text = include_bytes!("main.rs");
         assert_eq!(text.as_ref(), decompress(&compress(text)));
     }
 }
