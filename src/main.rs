@@ -88,7 +88,9 @@ fn run(args: &Cli) -> Result<()> {
         }
         stdout.write_all(&chunk)?;
     }
-    stdout.write_u64::<BigEndian>(0)?;
+    if let Action::Compress(_) = args.action {
+        stdout.write_u64::<BigEndian>(0)?;
+    }
     Ok(())
 }
 
