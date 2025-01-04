@@ -50,7 +50,8 @@ impl Node {
                 value: left.value + right.value,
                 content: NodeContent::Leaves(Some(Box::new(left)), Some(Box::new(right))),
             };
-            counts.push(node);
+            let i = counts.binary_search(&node).unwrap_or_else(|i| i);
+            counts.insert(i, node);
         }
         counts.pop().unwrap()
     }
@@ -151,10 +152,8 @@ pub fn compress(input: &[u8]) -> Vec<u8> {
     let mut counts = HashMap::new();
     input
         .iter()
-        .for_each(|byte| *counts.entry(*byte).or_insert(0u32) += 1);
+        .for_each(|byte| *counts.entry(*byte).or_insert(0_u32) += 1);
     let codes = Node::new_tree(&counts).get_codes();
-
-    dbg!(&codes);
 
     let mut compressed = counts_to_header(&counts);
     let mut bits = BitVec::new();
@@ -184,13 +183,16 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    use bitvec::bitvec;
+
     use super::*;
 
     #[test]
     fn header_creation_and_parsing() {
         let counts = HashMap::from([(1, 1), (2, 2), (3, 3)]);
         let mut header = counts_to_header(&counts);
-        header.extend_from_slice(&[24, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
+        header.extend_from_slice(&24_u64.to_be_bytes());
+        header.extend_from_slice(&[1, 2, 3]);
         let (new_counts, bits) = header_to_counts(&header).expect("Header parsing failed");
         assert_eq!(counts, new_counts);
         assert_eq!(bits, BitVec::from_slice(&[1, 2, 3]))
@@ -199,14 +201,9 @@ mod tests {
     #[test]
     fn get_bytes_from_tree() {
         let tree = Node::new_tree(&HashMap::from([(1, 1), (2, 2), (3, 3)]));
-        dbg!(&tree);
-        let bits1 = BitVec::repeat(false, 2);
-        let mut bits2 = BitVec::repeat(false, 1);
-        bits2.push(true);
-        let bits3 = BitVec::repeat(true, 1);
-        assert_eq!(tree.get_byte(&bits1), Some(1));
-        assert_eq!(tree.get_byte(&bits2), Some(2));
-        assert_eq!(tree.get_byte(&bits3), Some(3));
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 0, 0)), Some(1));
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 0, 1)), Some(2));
+        assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1)), Some(3));
     }
 
     #[test]

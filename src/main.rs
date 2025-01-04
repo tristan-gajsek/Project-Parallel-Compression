@@ -1,11 +1,12 @@
 use std::{
     collections::VecDeque,
-    io::{self, BufRead, Read},
+    io::{self, Read, Write},
 };
 
 use anyhow::{anyhow, bail, Ok, Result};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use clap::Parser;
-use cli::Cli;
+use cli::{Action, Algorithm, Cli};
 use colored::Colorize;
 use itertools::Itertools;
 use mpi::{
@@ -19,89 +20,55 @@ mod delta;
 mod huffman;
 
 fn main() {
-    let args = Cli::parse();
-
-    if let Err(e) = run(&args) {
+    if let Err(e) = run(&Cli::parse()) {
         eprintln!("{} {e}", "error:".red());
     }
 }
 
 fn run(args: &Cli) -> Result<()> {
-    let input = read_input(args.size)?;
-    let output = process_input(&input);
-    Ok(())
-}
-
-fn read_input(size: Option<usize>) -> Result<Vec<Vec<u8>>> {
-    let mut stdin = io::stdin().lock();
-
-    let chunks = if let Some(size) = size {
-        let mut input = vec![];
-        stdin.read_to_end(&mut input)?;
-        input
-            .into_iter()
-            .chunks(size)
-            .into_iter()
-            .map(|chunk| chunk.collect())
-            .collect()
-    } else {
-        stdin
-            .lines()
-            .map(|line| {
-                line.map(|line| line.into_bytes().into())
-                    .map_err(anyhow::Error::from)
-            })
-            .collect::<Result<_>>()?
-    };
-
-    Ok(chunks)
-}
-
-fn process_input(input: &[Vec<u8>]) -> Result<Option<Vec<Vec<u8>>>> {
     let universe = mpi::initialize().ok_or(anyhow!("MPI initialization failed"))?;
     let world = universe.world();
-    if world.size() < 2 {
-        bail!("Number of processes must be at least 2");
-    }
-    let mut output = vec![VecDeque::new(); (world.size() - 1) as usize].into_boxed_slice();
+
+    let input = match (world.size(), world.rank()) {
+        (size, 0) if size < 2 => bail!("Number of processes must be at least 2"),
+        (_, 0) => Some(read_input(args)?),
+        _ => None,
+    };
+    let mut output = vec![VecDeque::new(); (world.size() - 1) as usize];
 
     if world.rank() == 0 {
         // Equally distribute data across processes
-        for (i, chunk) in input.iter().enumerate() {
+        for (i, chunk) in input.as_ref().unwrap().iter().enumerate() {
             world
                 .process_at_rank((i as Rank) % (world.size() - 1) + 1)
                 .send(&chunk[..]);
-            eprintln!("Sent {chunk:?} to {}", (i as Rank) % (world.size() - 1) + 1);
         }
         // Send empty slice to all processes, which tells them to stop
         (1..world.size()).for_each(|rank| world.process_at_rank(rank).send::<[u8]>(&[]));
 
         // Wait to receive data from all processes
-        for _ in 0..input.len() {
+        for _ in 0..input.as_ref().unwrap().len() {
             let (chunk, status) = world.any_process().receive_vec::<u8>();
-            eprintln!("Got {chunk:?} from {}", status.source_rank());
             output[(status.source_rank() - 1) as usize].push_back(chunk);
         }
     } else {
         loop {
             // Receive data and stop if an empty Vec was received
             let chunk = world.process_at_rank(0).receive_vec::<u8>().0;
-            if chunk.len() == 0 {
+            if chunk.is_empty() {
                 break;
             }
-            eprintln!("Received {chunk:?} on {}", world.rank());
             // Process data and send it back to process 0
-            world.process_at_rank(0).send(&process_chunk(&chunk));
+            world.process_at_rank(0).send(&process_chunk(&chunk, args)?);
         }
     }
 
-    eprintln!("Done on {}", world.rank());
     if world.rank() != 0 {
-        return Ok(None);
+        return Ok(());
     }
 
     // Make sure output data is in the correct order
-    let mut ordered_output = Vec::with_capacity(input.len());
+    let mut ordered_output = Vec::with_capacity(input.as_ref().unwrap().len());
     'outer: loop {
         for rank in 0..output.len() {
             if let Some(chunk) = output[rank].pop_front() {
@@ -112,10 +79,54 @@ fn process_input(input: &[Vec<u8>]) -> Result<Option<Vec<Vec<u8>>>> {
         }
     }
 
-    eprintln!("{ordered_output:#?}");
-    Ok(Some(ordered_output))
+    let mut stdout = io::stdout();
+    for chunk in ordered_output {
+        if let Action::Compress(_) = args.action {
+            stdout.write_u64::<BigEndian>(chunk.len() as u64)?;
+        }
+        stdout.write_all(&chunk)?;
+    }
+    stdout.write_u64::<BigEndian>(0)?;
+    Ok(())
 }
 
-fn process_chunk(input: &[u8]) -> Vec<u8> {
-    input.iter().map(|data| data + 1).collect()
+fn read_input(args: &Cli) -> Result<Vec<Vec<u8>>> {
+    let mut stdin = io::stdin().lock();
+
+    Ok(if let Action::Compress(args) = &args.action {
+        let mut input = vec![];
+        stdin.read_to_end(&mut input)?;
+
+        if let Some(size) = args.size {
+            input
+                .into_iter()
+                .chunks(size.into())
+                .into_iter()
+                .map(|c| c.collect())
+                .collect()
+        } else {
+            vec![input]
+        }
+    } else {
+        let mut input = vec![];
+        loop {
+            let len = stdin.read_u64::<BigEndian>()?;
+            if len == 0 {
+                break;
+            }
+            let mut chunk = vec![0; len as usize];
+            stdin.read_exact(&mut chunk)?;
+            input.push(chunk);
+        }
+        input
+    })
+}
+
+fn process_chunk(input: &[u8], args: &Cli) -> Result<Vec<u8>> {
+    Ok(match (&args.action, &args.algorithm) {
+        (Action::Compress(_), Algorithm::Delta) => delta::compress(input),
+        (Action::Decompress, Algorithm::Delta) => delta::decompress(input),
+        (Action::Compress(_), Algorithm::Huffman) => huffman::compress(input),
+        (Action::Decompress, Algorithm::Huffman) => huffman::decompress(input)?,
+    })
 }

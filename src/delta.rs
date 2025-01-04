@@ -61,7 +61,7 @@ pub fn compress(slice: &[u8]) -> Vec<u8> {
             } else {
                 bits.bits(0b10, 2);
                 bits.bit(diff.is_negative());
-                bits.byte(diff.abs() as u8);
+                bits.byte(diff.unsigned_abs() as u8);
             }
         }
     });
