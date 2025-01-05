@@ -115,4 +115,12 @@ mod tests {
         let text = include_bytes!("main.rs");
         assert_eq!(text.as_ref(), decompress(&compress(text)));
     }
+
+    #[test]
+    fn separated_compression_and_decompression() {
+        let chunks = include_bytes!("main.rs").chunks(32).collect::<Vec<_>>();
+        let compressed = chunks.iter().map(|c| compress(*c)).collect::<Vec<_>>();
+        let decompressed = compressed.iter().map(|c| decompress(c)).collect::<Vec<_>>();
+        assert_eq!(chunks, decompressed);
+    }
 }

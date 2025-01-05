@@ -214,4 +214,15 @@ mod tests {
         let decompressed = decompress(&compressed).expect("Decompression failed");
         assert_eq!(text, decompressed.as_slice());
     }
+
+    #[test]
+    fn separated_compression_and_decompression() {
+        let chunks = include_bytes!("main.rs").chunks(32).collect::<Vec<_>>();
+        let compressed = chunks.iter().map(|c| compress(*c)).collect::<Vec<_>>();
+        let decompressed = compressed
+            .iter()
+            .map(|c| decompress(c).expect("Decompression failed"))
+            .collect::<Vec<_>>();
+        assert_eq!(chunks, decompressed);
+    }
 }

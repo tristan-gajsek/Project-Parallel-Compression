@@ -81,16 +81,7 @@ fn run(args: &Cli) -> Result<()> {
         }
     }
 
-    let mut stdout = io::stdout();
-    for chunk in ordered_output {
-        if let Action::Compress(_) = args.action {
-            stdout.write_u64::<BigEndian>(chunk.len() as u64)?;
-        }
-        stdout.write_all(&chunk)?;
-    }
-    if let Action::Compress(_) = args.action {
-        stdout.write_u64::<BigEndian>(0)?;
-    }
+    write_output(&ordered_output, args)?;
     Ok(())
 }
 
@@ -124,6 +115,20 @@ fn read_input(args: &Cli) -> Result<Vec<Vec<u8>>> {
         }
         input
     })
+}
+
+fn write_output(output: &[Vec<u8>], args: &Cli) -> Result<()> {
+    let mut stdout = io::stdout();
+    for chunk in output {
+        if let Action::Compress(_) = args.action {
+            stdout.write_u64::<BigEndian>(chunk.len() as u64)?;
+        }
+        stdout.write_all(&chunk)?;
+    }
+    if let Action::Compress(_) = args.action {
+        stdout.write_u64::<BigEndian>(0)?;
+    }
+    Ok(())
 }
 
 fn process_chunk(input: &[u8], args: &Cli) -> Result<Vec<u8>> {
