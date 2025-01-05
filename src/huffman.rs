@@ -16,14 +16,14 @@ struct Node {
 #[derive(Debug, PartialEq, Eq)]
 enum NodeContent {
     Byte(u8),
-    Leaves(Option<Box<Node>>, Option<Box<Node>>),
+    Branches(Option<Box<Node>>, Option<Box<Node>>),
 }
 
 impl NodeContent {
     pub fn byte(&self) -> Option<u8> {
         match self {
             NodeContent::Byte(byte) => Some(*byte),
-            NodeContent::Leaves(..) => None,
+            NodeContent::Branches(..) => None,
         }
     }
 }
@@ -48,7 +48,7 @@ impl Node {
             let right = counts.pop().unwrap();
             let node = Node {
                 value: left.value + right.value,
-                content: NodeContent::Leaves(Some(Box::new(left)), Some(Box::new(right))),
+                content: NodeContent::Branches(Some(Box::new(left)), Some(Box::new(right))),
             };
             let i = counts.binary_search(&node).unwrap_or_else(|i| i);
             counts.insert(i, node);
@@ -73,7 +73,7 @@ impl Node {
                     },
                 );
             }
-            NodeContent::Leaves(left, right) => {
+            NodeContent::Branches(left, right) => {
                 let (mut lcode, mut rcode) = (code.clone(), code);
                 lcode.push(false);
                 rcode.push(true);
@@ -88,7 +88,7 @@ impl Node {
         for bit in bits {
             match &node.content {
                 NodeContent::Byte(byte) => return Some(*byte),
-                NodeContent::Leaves(left, right) => {
+                NodeContent::Branches(left, right) => {
                     node = if !bit { left } else { right }.as_ref()?;
                 }
             }
@@ -122,10 +122,10 @@ impl Ord for NodeContent {
     fn cmp(&self, other: &Self) -> Ordering {
         use NodeContent as N;
         match (self, other) {
-            (N::Leaves(..), N::Leaves(..)) => Ordering::Equal,
+            (N::Branches(..), N::Branches(..)) => Ordering::Equal,
             (N::Byte(b1), N::Byte(b2)) => b1.cmp(b2),
-            (N::Byte(_), N::Leaves(..)) => Ordering::Less,
-            (N::Leaves(..), N::Byte(_)) => Ordering::Greater,
+            (N::Byte(_), N::Branches(..)) => Ordering::Less,
+            (N::Branches(..), N::Byte(_)) => Ordering::Greater,
         }
     }
 }
