@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::HashMap, io::Cursor};
 
 use anyhow::{Ok, Result};
-use bitvec::order::Msb0;
+use bitvec::{bitvec, order::Msb0};
 use byteorder::{BigEndian, ReadBytesExt};
 use itertools::Itertools;
 
@@ -65,7 +65,13 @@ impl Node {
     fn get_codes_inner(&self, code: BitVec, codes: &mut HashMap<u8, BitVec>) {
         match &self.content {
             NodeContent::Byte(byte) => {
-                codes.insert(*byte, code.clone());
+                codes.insert(
+                    *byte,
+                    match code.is_empty() {
+                        false => code,
+                        true => bitvec!(u8, Msb0; 0),
+                    },
+                );
             }
             NodeContent::Leaves(left, right) => {
                 let (mut lcode, mut rcode) = (code.clone(), code);
