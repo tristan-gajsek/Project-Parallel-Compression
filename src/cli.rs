@@ -10,6 +10,9 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub action: Action,
+
+    #[arg(long, short, help = "Print statistics instead of processed input")]
+    pub print_stats: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]

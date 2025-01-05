@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
     io::{self, Read, Write},
+    time::Instant,
 };
 
 use anyhow::{anyhow, bail, Ok, Result};
@@ -37,6 +38,7 @@ fn run(args: &Cli) -> Result<()> {
         _ => None,
     };
     let mut output = vec![VecDeque::new(); (world.size() - 1) as usize];
+    let start = Instant::now();
 
     if world.rank() == 0 {
         // Equally distribute data across processes
@@ -81,7 +83,11 @@ fn run(args: &Cli) -> Result<()> {
         }
     }
 
-    write_output(&ordered_output, args)?;
+    if !args.print_stats {
+        print_output(&ordered_output, args)?;
+    } else {
+        print_stats(start, &input.unwrap(), &ordered_output)?;
+    }
     Ok(())
 }
 
@@ -117,7 +123,7 @@ fn read_input(args: &Cli) -> Result<Vec<Vec<u8>>> {
     })
 }
 
-fn write_output(output: &[Vec<u8>], args: &Cli) -> Result<()> {
+fn print_output(output: &[Vec<u8>], args: &Cli) -> Result<()> {
     let mut stdout = io::stdout();
     for chunk in output {
         if let Action::Compress(_) = args.action {
@@ -128,6 +134,22 @@ fn write_output(output: &[Vec<u8>], args: &Cli) -> Result<()> {
     if let Action::Compress(_) = args.action {
         stdout.write_u64::<BigEndian>(0)?;
     }
+    Ok(())
+}
+
+fn print_stats(start: Instant, input: &[Vec<u8>], output: &[Vec<u8>]) -> Result<()> {
+    let elapsed = start.elapsed();
+    let input_size: usize = input.iter().map(|i| i.len()).sum();
+    let output_size: usize = output.iter().map(|o| o.len()).sum();
+    println!(
+        "Time: {}ms | {}us | {}ns\nData: {}B -> {}B ({}x)",
+        elapsed.as_millis().to_string().yellow(),
+        elapsed.as_micros().to_string().yellow(),
+        elapsed.as_nanos().to_string().yellow(),
+        input_size.to_string().yellow(),
+        output_size.to_string().yellow(),
+        format!("{:.3}", output_size as f32 / input_size as f32).yellow()
+    );
     Ok(())
 }
 
