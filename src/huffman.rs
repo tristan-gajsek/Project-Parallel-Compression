@@ -1,13 +1,12 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BinaryHeap, HashMap},
     io::Cursor,
 };
 
 use anyhow::{Ok, Result};
 use bitvec::{bitvec, order::Msb0};
 use byteorder::{BigEndian, ReadBytesExt};
-use itertools::Itertools;
 
 type BitVec = bitvec::vec::BitVec<u8, Msb0>;
 
@@ -41,10 +40,9 @@ impl Node {
     }
 
     pub fn new_tree(counts: &BTreeMap<u8, u32>) -> Self {
-        let mut counts: Vec<_> = counts
+        let mut counts: BinaryHeap<_> = counts
             .iter()
             .map(|(byte, count)| Node::new(*count, *byte))
-            .sorted()
             .collect();
 
         while counts.len() > 1 {
@@ -54,8 +52,7 @@ impl Node {
                 value: left.value + right.value,
                 content: NodeContent::Branches(Some(Box::new(left)), Some(Box::new(right))),
             };
-            let i = counts.binary_search(&node).unwrap_or_else(|i| i);
-            counts.insert(i, node);
+            counts.push(node);
         }
         counts.pop().unwrap()
     }
