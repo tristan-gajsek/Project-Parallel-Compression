@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, collections::HashMap, io::Cursor};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+    io::Cursor,
+};
 
 use anyhow::{Ok, Result};
 use bitvec::{bitvec, order::Msb0};
@@ -36,7 +40,7 @@ impl Node {
         }
     }
 
-    pub fn new_tree(counts: &HashMap<u8, u32>) -> Self {
+    pub fn new_tree(counts: &BTreeMap<u8, u32>) -> Self {
         let mut counts: Vec<_> = counts
             .iter()
             .map(|(byte, count)| Node::new(*count, *byte))
@@ -130,7 +134,7 @@ impl Ord for NodeContent {
     }
 }
 
-fn counts_to_header(counts: &HashMap<u8, u32>) -> Vec<u8> {
+fn counts_to_header(counts: &BTreeMap<u8, u32>) -> Vec<u8> {
     let mut header = Vec::with_capacity(2 + 5 * counts.len());
 
     header.extend_from_slice(&(counts.len() as u16).to_be_bytes());
@@ -141,8 +145,8 @@ fn counts_to_header(counts: &HashMap<u8, u32>) -> Vec<u8> {
     header
 }
 
-fn header_to_counts(header: &[u8]) -> Result<(HashMap<u8, u32>, BitVec)> {
-    let mut counts = HashMap::new();
+fn header_to_counts(header: &[u8]) -> Result<(BTreeMap<u8, u32>, BitVec)> {
+    let mut counts = BTreeMap::new();
 
     let mut cursor = Cursor::new(header);
     for _ in 0..cursor.read_u16::<BigEndian>()? {
@@ -155,7 +159,7 @@ fn header_to_counts(header: &[u8]) -> Result<(HashMap<u8, u32>, BitVec)> {
 }
 
 pub fn compress(input: &[u8]) -> Vec<u8> {
-    let mut counts = HashMap::new();
+    let mut counts = BTreeMap::new();
     input
         .iter()
         .for_each(|byte| *counts.entry(*byte).or_insert(0_u32) += 1);
@@ -195,7 +199,7 @@ mod tests {
 
     #[test]
     fn header_creation_and_parsing() {
-        let counts = HashMap::from([(1, 1), (2, 2), (3, 3)]);
+        let counts = BTreeMap::from([(1, 1), (2, 2), (3, 3)]);
         let mut header = counts_to_header(&counts);
         header.extend_from_slice(&24_u64.to_be_bytes());
         header.extend_from_slice(&[1, 2, 3]);
@@ -206,7 +210,7 @@ mod tests {
 
     #[test]
     fn get_bytes_from_tree() {
-        let tree = Node::new_tree(&HashMap::from([(1, 1), (2, 2), (3, 3)]));
+        let tree = Node::new_tree(&BTreeMap::from([(1, 1), (2, 2), (3, 3)]));
         dbg!(&tree);
         assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1, 0)), Some(1));
         assert_eq!(tree.get_byte(&bitvec!(u8, Msb0; 1, 1)), Some(2));
